@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
 import path from 'node:path';
+import {ORIGIN} from './config.mjs';
 const root=path.resolve('.local/dashboard-upload');
 for (const name of ['anne-sample','tenor-sample']) {
  try { await fs.access(`.local/${name}.json`); throw new Error('Sample record exists; preserve its token and manifest.'); }
@@ -19,7 +20,7 @@ for(const [name,title,description,source,days] of [
  await fs.copyFile(source,path.join(root,key));
  await fs.mkdir(path.join(root,'_shares'),{recursive:true,mode:0o700});
  await fs.writeFile(path.join(root,`_shares/${hash}.json`),JSON.stringify(manifest),{mode:0o600});
- const record={name,token,hash,manifest,source,url:`https://downloads.example.com/s/${token}`};
+ const record={name,token,hash,manifest,source,url:`${ORIGIN}/s/${token}`};
  await fs.writeFile(`.local/${name}.json`,JSON.stringify(record,null,2),{mode:0o600});
 }
 console.log('Prepared two harmless sample files and scoped manifests locally.');

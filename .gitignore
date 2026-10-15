@@ -9,3 +9,10 @@ node_modules/
 *.flac
 *.wav
 *.mp3
+
+# Real manuscripts and credentials stay private; only the generated fixture is tracked.
+*.[pP][dD][fF]
+!samples/Tenors - sample manuscript.pdf
+*.pem
+*.key
+.aws/

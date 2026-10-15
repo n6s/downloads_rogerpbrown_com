@@ -3,8 +3,8 @@ import { mkdir, readFile, writeFile, stat } from 'node:fs/promises';
 import { randomBytes, createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { basename, resolve } from 'node:path';
-const BUCKET = 'private-downloads';
-const ORIGIN = 'https://downloads.example.com';
+import {accountUsage,checkBudget} from './storage.mjs';
+import {BUCKET,ORIGIN} from './config.mjs';
 const wrangler = process.env.WRANGLER_BIN || 'wrangler';
 const local = resolve('.local');
 await mkdir(local, { recursive:true, mode:0o700 });
@@ -27,10 +27,7 @@ if (command === 'create') {
   if (!Number.isInteger(Number(days)) || +days < 1 || +days > 180 || !title || title.length > 200 || typeof description !== 'string' || description.length > 2000 || !files.length || files.length > 100) throw Error('create NAME DAYS TITLE DESCRIPTION FILE... (1-180 days, title max 200 characters, description max 2000 characters or empty string, 1-100 files)');
   try { await stat(path); throw Error('Share name already exists; choose a new name.'); } catch(e) { if (e.code !== 'ENOENT') throw e; }
   const sizes = await Promise.all(files.map(async f => {const s=await stat(f); if(!s.isFile() || s.size > 300*1024**2) throw Error('CLI upload limit: 300 MiB per file. Larger files require an authorized multipart upload path; the dashboard also limits uploads to 300 MB.'); return s.size;}));
-  if(sizes.reduce((a,b)=>a+b,0) > 1024**3) throw Error('Conservative batch limit: 1 GiB. Check total account storage before larger transfers.');
-  const accountBytes=Number(process.env.DOWNLOADS_CONFIRMED_ACCOUNT_BYTES);
-  if(!Number.isSafeInteger(accountBytes) || accountBytes < 0 || !process.env.DOWNLOADS_CONFIRMED_ACCOUNT_BYTES) throw Error('Check current R2 storage across all account buckets; set DOWNLOADS_CONFIRMED_ACCOUNT_BYTES to that current total in bytes before this batch.');
-  if(accountBytes+sizes.reduce((a,b)=>a+b,0) > 8_000_000_000) throw Error('Batch crosses conservative 8 GB account storage target; stop for review.');
+  console.log(checkBudget({deltaBytes:sizes.reduce((a,b)=>a+b,0),shareBytes:sizes.reduce((a,b)=>a+b,0)},await accountUsage()));
   const token = randomBytes(32).toString('base64url');
   const prefix = randomBytes(16).toString('hex');
   const record = {token, manifest:{version:1,title,description,expiresAt:new Date(Date.now() + +days*86400000).toISOString(),files:files.map(f => ({id:randomBytes(12).toString('hex'),key:`objects/${prefix}/${randomBytes(16).toString('hex')}`,filename:basename(f)}))}};

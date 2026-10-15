@@ -10,7 +10,7 @@ const script=join(repo,'scripts/dashboard.mjs');
 await copyFile(join(repo,'samples/Tenors - sample manuscript.pdf'),join(folder,'one.pdf'));
 await writeFile(join(folder,'ignore.flac'),'not uploaded');
 await writeFile(join(root,'config.json'),JSON.stringify({folder,title:'Test',description:'',expiresAt:new Date(Date.now()+864e5).toISOString()}));
-const run=(...args)=>spawnSync(process.execPath,[script,...args],{cwd:root,env:{...process.env,DOWNLOADS_CONFIRMED_ACCOUNT_BYTES:'90000000'},encoding:'utf8'});
+const run=(...args)=>spawnSync(process.execPath,[script,...args],{cwd:root,env:{...process.env,CLOUDFLARE_API_TOKEN:''},encoding:'utf8'});
 assert.equal(run('new','test','config.json').status,0);
 const path=join(root,'.local/test.json');let before=JSON.parse(await readFile(path));assert.equal(before.manifest.files.length,1);assert.equal((await stat(path)).mode&0o777,0o600);
 assert.notEqual(run('new','test','config.json').status,0);assert.notEqual(run('sync','test').status,0);

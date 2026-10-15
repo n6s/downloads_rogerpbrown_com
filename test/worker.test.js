@@ -43,3 +43,13 @@ test('Uploaded dates sort newest first, both columns toggle, ties stable and mis
  m.files[0].filename='<img onerror="bad">.pdf';html=await(await f.request(`/s/${a}`)).text();assert.match(html,/&lt;img onerror=&quot;bad&quot;&gt;/);assert.doesNotMatch(html,/<img/);
  m.files[0].uploadedAt='2026-10-15\" onerror=bad';assert.equal((await f.request(`/s/${a}`)).status,404);
 });
+
+
+test('explicit non-expiring share remains scoped and revocable; other shares retain expiry',async()=>{
+ const f=await fixture();const m=f.manifests.get(`_shares/${await tokenHash(a)}.json`);m.expiresAt=null;
+ assert.equal((await f.request(`/s/${a}`)).status,200);assert.match(await(await f.request(`/s/${a}`)).text(),/remains available until Roger revokes/);
+ assert.equal((await f.request(`/s/${a}/f/anne`)).status,200);assert.equal((await f.request(`/s/${a}/f/tenors`)).status,404);
+ const tenor=f.manifests.get(`_shares/${await tokenHash(b)}.json`);tenor.expiresAt='2000-01-01';assert.equal((await f.request(`/s/${b}`)).status,404);
+ delete m.expiresAt;assert.equal((await f.request(`/s/${a}`)).status,404);m.expiresAt='';assert.equal((await f.request(`/s/${a}`)).status,404);
+ m.expiresAt=null;m.revoked=true;assert.equal((await f.request(`/s/${a}`)).status,404);assert.equal((await f.request(`/s/${a}/f/anne`)).status,404);
+});
