@@ -36,18 +36,29 @@ function validManifest(m) {
     Number.isFinite(Date.parse(m.expiresAt)) && Date.parse(m.expiresAt) > Date.now() &&
     Array.isArray(m.files) && m.files.length <= 100 && m.files.every(f =>
       f && /^[a-zA-Z0-9_-]{1,80}$/.test(f.id) && /^objects\/[a-f0-9]{32}\/[a-f0-9]{32}$/.test(f.key) &&
-      typeof f.filename === 'string' && f.filename.length <= 180);
+      typeof f.filename === 'string' && f.filename.length <= 180 &&
+      (f.uploadedAt === undefined || (typeof f.uploadedAt === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(f.uploadedAt) && Number.isFinite(Date.parse(f.uploadedAt)))));
 }
-function page(m, token) {
-  const items = m.files.map(f => `<li><span>${escapeHtml(f.filename)}</span><a href="/s/${token}/f/${f.id}">Download</a></li>`).join('');
-  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(m.title)} · Downloads</title><style>body{font:18px/1.5 system-ui,sans-serif;background:#f5f4f0;color:#203438;margin:0;padding:7vh 5vw}main{max-width:760px;margin:auto}small{color:#52666a}h1{font-size:2rem;line-height:1.2}.description{white-space:pre-wrap;overflow-wrap:anywhere}ul{list-style:none;padding:0;margin:2rem 0}li{display:flex;align-items:center;justify-content:space-between;gap:1.5rem;background:white;border:1px solid #d6ddda;border-radius:12px;margin:12px 0;padding:20px}span{overflow-wrap:anywhere}a{background:#215b51;color:white;padding:10px 16px;border-radius:8px;text-decoration:none;white-space:nowrap}a:hover,a:focus-visible{background:#103d35;outline:3px solid #d6b85e}footer{font-size:.9rem;color:#52666a}@media(max-width:460px){li{align-items:flex-start;flex-direction:column}}</style><main><small>PRIVATE FILE SHARING</small><h1>${escapeHtml(m.title)}</h1>${m.description ? `<p class="description">${escapeHtml(m.description)}</p>` : ''}<p>Choose a file to save it to your computer.</p><ul>${items}</ul><footer>This private link expires ${escapeHtml(m.expiresAt.slice(0,10))} (UTC). Keep it with the intended recipients. Downloads can be retried.</footer></main></html>`;
+export function sortFiles(files, sort = 'date-desc') {
+  const [field, order] = sort.split('-');
+  return files.map((file,index)=>({file,index})).sort((a,b)=>{
+    let value;
+    if(field==='name') value=a.file.filename.localeCompare(b.file.filename,'en',{numeric:true,sensitivity:'base'});
+    else {const x=Date.parse(a.file.uploadedAt),y=Date.parse(b.file.uploadedAt); if(!Number.isFinite(x)||!Number.isFinite(y))return Number.isFinite(x)?-1:Number.isFinite(y)?1:a.index-b.index; value=x-y;}
+    return (order==='desc'?-value:value)||a.index-b.index;
+  }).map(x=>x.file);
+}
+function page(m, token, sort) {
+  const header=(field,label)=>{const selected=sort.startsWith(field+'-'),direction=selected&&sort.endsWith('asc')?'desc':'asc';return `<th scope="col"${selected?` aria-sort="${sort.endsWith('asc')?'ascending':'descending'}"`:''}><a class="sort" href="/s/${token}/sort/${field}-${direction}" aria-label="Sort by ${label.toLowerCase()}, ${direction==='asc'?'ascending':'descending'}">${label}${selected?(sort.endsWith('asc')?' ↑':' ↓'):''}</a></th>`;};
+  const items=sortFiles(m.files,sort).map(f=>`<tr><th scope="row">${escapeHtml(f.filename)}</th><td class="uploaded" data-label="Uploaded">${f.uploadedAt?`<time datetime="${escapeHtml(f.uploadedAt)}">${escapeHtml(new Date(f.uploadedAt).toISOString().slice(0,16).replace('T',' '))} UTC</time>`:'Not recorded'}</td><td><a class="download" href="/s/${token}/f/${f.id}" aria-label="Download ${escapeHtml(f.filename)}">Download</a></td></tr>`).join('');
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(m.title)} · Downloads</title><style>body{font:18px/1.5 system-ui,sans-serif;background:#f5f4f0;color:#203438;margin:0;padding:7vh 5vw}main{max-width:960px;margin:auto}small{color:#52666a}h1{font-size:2rem;line-height:1.2}.description{white-space:pre-wrap;overflow-wrap:anywhere}table{width:100%;border-collapse:separate;border-spacing:0 12px;margin:2rem 0}caption{text-align:left;font-size:.9rem;color:#52666a}th,td{text-align:left;padding:16px}tbody th{font-weight:400;overflow-wrap:anywhere}tbody th,tbody td{background:white;border-block:1px solid #d6ddda}tbody th{border-left:1px solid #d6ddda;border-radius:12px 0 0 12px}tbody td:last-child{border-right:1px solid #d6ddda;border-radius:0 12px 12px 0}.uploaded{font-size:.85rem;white-space:nowrap}a.download{display:inline-block;background:#215b51;color:white;padding:10px 16px;border-radius:8px;text-decoration:none;white-space:nowrap}.sort{color:#215b51;text-underline-offset:4px}a:hover,a:focus-visible{outline:3px solid #b18a28;outline-offset:3px}footer{font-size:.9rem;color:#52666a}@media(max-width:650px){body{padding:4vh 5vw}h1{font-size:1.65rem}thead tr{display:flex;gap:1rem}thead th{padding:8px 0}thead th:last-child{display:none}tbody tr{display:grid;grid-template-columns:minmax(0,1fr) auto;background:white;border:1px solid #d6ddda;border-radius:12px;margin-bottom:12px;padding:14px;gap:10px}tbody th,tbody td{padding:0;border:0!important;border-radius:0!important}tbody th{grid-column:1/-1}.uploaded{align-self:center;white-space:normal}.uploaded:before{content:'Uploaded: ';font-weight:600}table{display:block}tbody{display:block}}</style><main><small>PRIVATE FILE SHARING</small><h1>${escapeHtml(m.title)}</h1>${m.description ? `<p class="description">${escapeHtml(m.description)}</p>` : ''}<p>Choose a file to save it to your computer.</p><table><caption>Uploaded dates are UTC. Use the column headings to sort; newest uploads appear first by default. Older files without an upload date show “Not recorded”.</caption><thead><tr>${header('name','Filename')}${header('date','Uploaded')}<th scope="col">Download</th></tr></thead><tbody>${items}</tbody></table><footer>This private link expires ${escapeHtml(m.expiresAt.slice(0,10))} (UTC). Keep it with the intended recipients. Downloads can be retried.</footer></main></html>`;
 }
 export default {
   async fetch(request, env) {
     const head = request.method === 'HEAD';
     if (!['GET','HEAD'].includes(request.method)) return response(null, 405, { Allow: 'GET, HEAD' });
     const url = new URL(request.url);
-    const match = /^\/s\/([A-Za-z0-9_-]{43})(?:\/f\/([A-Za-z0-9_-]{1,80}))?\/?$/.exec(url.pathname);
+    const match = /^\/s\/([A-Za-z0-9_-]{43})(?:\/f\/([A-Za-z0-9_-]{1,80})|\/sort\/(date-asc|date-desc|name-asc|name-desc))?\/?$/.exec(url.pathname);
     if (!match || url.search) return response(head ? null : 'Link unavailable.', 404);
     try {
       // No list operation or user-controlled object key is ever accepted.
@@ -55,7 +66,7 @@ export default {
       if (!manifestObject) return response(head ? null : 'Link unavailable.', 404);
       const manifest = await manifestObject.json();
       if (!validManifest(manifest)) return response(head ? null : 'Link unavailable.', 404);
-      if (!match[2]) return response(head ? null : page(manifest, match[1]), 200, {'Content-Type':'text/html; charset=utf-8'});
+      if (!match[2]) return response(head ? null : page(manifest, match[1], match[3] || 'date-desc'), 200, {'Content-Type':'text/html; charset=utf-8'});
       const file = manifest.files.find(f => f.id === match[2]);
       if (!file) return response(head ? null : 'Link unavailable.', 404);
       const meta = await env.DOWNLOADS.head(file.key);

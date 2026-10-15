@@ -38,6 +38,9 @@ if (command === 'create') {
   await writeFile(path,JSON.stringify(record,null,2),{flag:'wx',mode:0o600});
   for(let i=0;i<files.length;i++) run(['r2','object','put',`${BUCKET}/${record.manifest.files[i].key}`,'--remote','--file',resolve(files[i]),'--content-type','application/octet-stream','--storage-class','Standard']);
   await publish(record);
+  for(const f of record.manifest.files){const r=await fetch(`${ORIGIN}/s/${record.token}/f/${f.id}`,{method:'HEAD'});const uploaded=Date.parse(r.headers.get('last-modified'));if(r.status!==200 || !Number.isFinite(uploaded))throw Error('Could not verify actual R2 upload date. Use dashboard stamp after resolving publication.');f.uploadedAt=new Date(uploaded).toISOString();}
+  await writeFile(path,JSON.stringify(record,null,2),{mode:0o600});
+  await publish(record);
   console.log(`Created ${name}. Link stored privately; run: node scripts/manage.mjs link ${name}`);
 } else {
   const record = JSON.parse(await readFile(path,'utf8'));

@@ -4,12 +4,28 @@ import {resolve,join} from 'node:path';
 import {createHash,randomBytes} from 'node:crypto';
 import assert from 'node:assert/strict';
 const [command,name,configPath]=process.argv.slice(2);
-if(!/^[a-z0-9-]{1,60}$/.test(name||'')) throw Error('Usage: node scripts/dashboard.mjs new|sync|revoke|verify NAME [CONFIG.json]');
+if(!/^[a-z0-9-]{1,60}$/.test(name||'')) throw Error('Usage: node scripts/dashboard.mjs new|sync|revoke|stamp|verify NAME [CONFIG.json]');
 const local=resolve('.local'); await mkdir(local,{recursive:true,mode:0o700}); await chmod(local,0o700);
 const recordPath=join(local,`${name}.json`); const digest=b=>createHash('sha256').update(b).digest('hex');
 const save=async(p,v)=>writeFile(p,JSON.stringify(v,null,2),{mode:0o600});
 let record;
 try {record=JSON.parse(await readFile(recordPath,'utf8'));} catch(e){if(e.code!=='ENOENT')throw e;}
+if(command==='stamp'){
+ if(!record || record.manifest.revoked)throw Error('An active published share is required.');
+ let changed=0;
+ for(const f of record.manifest.files){
+  if(f.uploadedAt)continue;
+  const r=await fetch(`https://downloads.example.com/s/${record.token}/f/${f.id}`,{method:'HEAD'});
+  assert.equal(r.status,200); const uploaded=Date.parse(r.headers.get('last-modified'));
+  if(!Number.isFinite(uploaded))throw Error('Actual R2 upload timestamp unavailable; no date invented.');
+  f.uploadedAt=new Date(uploaded).toISOString();changed++;
+ }
+ if(!changed){console.log('All upload dates already recorded; unchanged dates preserved.');process.exit(0);}
+ const operation=join(local,'uploads',`${name}-dates-${Date.now()}`);await mkdir(join(operation,'manifest'),{recursive:true,mode:0o700});
+ const manifestFile=join(operation,'manifest',`${digest(record.token)}.json`);await save(manifestFile,record.manifest);
+ record.pending=true;record.lastUpload={operation,manifestPrefix:'_shares/'};await save(recordPath,record);
+ console.log(`Recorded ${changed} actual R2 upload dates from HTTPS Last-Modified. Upload ONLY ${manifestFile} into private-downloads/_shares/, replacing its existing manifest. Then run verify. No PDF upload is needed.`);process.exit(0);
+}
 if(command==='cleanup-plan'){
  if(!record)throw Error('Unknown share');
  if(!record.manifest.revoked || record.pending)throw Error('Revoke, publish and verify before cleanup.');
@@ -23,7 +39,7 @@ if(command==='verify'){
  else {
  assert.equal(page.status,200); assert.equal((html.match(/>Download<\/a>/g)||[]).length,record.manifest.files.length);
  for(const f of record.manifest.files){
- assert.ok(html.includes(f.filename)); const url=`${base}/f/${f.id}`;
+ assert.ok(html.includes(f.filename)); if(f.uploadedAt)assert.ok(html.includes(`datetime="${f.uploadedAt}"`)); const url=`${base}/f/${f.id}`;
  const r=await fetch(url);assert.equal(r.status,200);assert.equal(r.headers.get('content-disposition'),`attachment; filename="${f.filename}"; filename*=UTF-8''${encodeURIComponent(f.filename)}`);
  const bytes=Buffer.from(await r.arrayBuffer());assert.equal(digest(bytes),record.sources[f.filename].sha256);assert.equal(bytes.length,record.sources[f.filename].bytes);
  const h=await fetch(url,{method:'HEAD'});assert.equal(h.status,200);assert.equal((await h.arrayBuffer()).byteLength,0);
@@ -77,6 +93,6 @@ await save(recordPath,record);
 console.log(`Prepared ${uploads} new/changed PDFs (${addedBytes} bytes). Nothing uploaded yet.`);
 if(uploads)console.log(`1. R2 bucket private-downloads: open/create folder ${record.lastUpload.dataPrefix}; Upload > Files > select ALL files inside ${join(operation,'data')}. Wait for every upload to succeed.`);
 console.log(`2. In the SAME bucket open _shares/: Upload > Files > ${manifestFile}. Confirm overwrite for sync/revoke only. Publish manifest LAST.`);
-console.log(`3. Run: node scripts/dashboard.mjs verify ${name}`);
+console.log(`3. After publication: node scripts/dashboard.mjs stamp ${name} (records actual R2 dates; upload its metadata-only manifest as instructed), then node scripts/dashboard.mjs verify ${name}`);
 console.log(`4. Only after verification: node scripts/manage.mjs link ${name}`);
 console.log('Retired data is retained. No automatic deletions. If interrupted, use the same prepared files; do not run sync again until finished or restored from previous-record.json.');

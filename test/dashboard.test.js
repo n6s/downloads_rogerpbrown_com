@@ -15,9 +15,12 @@ assert.equal(run('new','test','config.json').status,0);
 const path=join(root,'.local/test.json');let before=JSON.parse(await readFile(path));assert.equal(before.manifest.files.length,1);assert.equal((await stat(path)).mode&0o777,0o600);
 assert.notEqual(run('new','test','config.json').status,0);assert.notEqual(run('sync','test').status,0);
 // Simulate completion of the separate dashboard publication and verification step.
-before.pending=false;await writeFile(path,JSON.stringify(before));
-assert.equal(run('sync','test').status,0);let after=JSON.parse(await readFile(path));assert.equal(after.manifest.files[0].key,before.manifest.files[0].key);assert.equal((await readdir(join(after.lastUpload.operation,'data'))).length,0);
+before.manifest.files[0].uploadedAt='2026-10-15T16:07:31.000Z';before.pending=false;await writeFile(path,JSON.stringify(before));
+assert.equal(run('sync','test').status,0);let after=JSON.parse(await readFile(path));assert.equal(after.manifest.files[0].key,before.manifest.files[0].key);assert.equal(after.manifest.files[0].uploadedAt,before.manifest.files[0].uploadedAt);assert.equal((await readdir(join(after.lastUpload.operation,'data'))).length,0);
 after.pending=false;await writeFile(path,JSON.stringify(after));await writeFile(join(folder,'one.pdf'),'%PDF-1.4\nreplacement');await writeFile(join(folder,'two.PDF'),'%PDF-1.4\nnew');
 assert.equal(run('sync','test').status,0);after=JSON.parse(await readFile(path));assert.equal(after.manifest.files.length,2);assert.notEqual(after.manifest.files[0].key,before.manifest.files[0].key);assert.equal(after.retired[0].key,before.manifest.files[0].key);
+assert.equal(after.manifest.files[0].uploadedAt,undefined);assert.equal(after.manifest.files[1].uploadedAt,undefined);
+const shim=join(root,'mock-head.mjs');await writeFile(shim,`globalThis.fetch=async(_url,options)=>{if(options.method!=='HEAD')throw Error('Only HEAD expected');return new Response(null,{status:200,headers:{'last-modified':'Fri, 16 Oct 2026 17:12:00 GMT'}});};`);
+const stamp=spawnSync(process.execPath,['--import',shim,script,'stamp','test'],{cwd:root,encoding:'utf8'});assert.equal(stamp.status,0,stamp.stderr);after=JSON.parse(await readFile(path));assert.equal(after.manifest.files[0].uploadedAt,'2026-10-16T17:12:00.000Z');assert.equal(after.manifest.files[1].uploadedAt,'2026-10-16T17:12:00.000Z');
 assert.equal(run('revoke','test').status,0);after=JSON.parse(await readFile(path));assert.equal(after.manifest.revoked,true);assert.notEqual(run('cleanup-plan','test').status,0);after.pending=false;await writeFile(path,JSON.stringify(after));assert.equal(JSON.parse(run('cleanup-plan','test').stdout).files.length,3);
 console.log('PASS: only PDFs staged; private record permissions; duplicate-name and unfinished-upload protection; unchanged-key reuse; immutable replacement and retirement; revocation and exact cleanup plan. Temporary fixture directory: '+root);

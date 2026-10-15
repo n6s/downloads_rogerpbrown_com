@@ -31,3 +31,15 @@ test('storage failures return generic uncached response',async()=>{const r=await
 test('range parser clamps and handles empty objects',()=>{assert.deepEqual(parseRange('bytes=8-99',10),{offset:8,length:2});assert.equal(parseRange('bytes=0-',0),false);assert.equal(parseRange('bytes=999999999999999999999-',10),false);});
 
  test('plain-text description is escaped and optional; invalid types and length denied',async()=>{const f=await fixture();const m=f.manifests.get(`_shares/${await tokenHash(a)}.json`);m.title='Example tenor practice parts';m.description='Example practice copies for the intended choir members.';let html=await(await f.request(`/s/${a}`)).text();assert.match(html,/Example tenor practice parts/);assert.match(html,/Example practice copies for the intended choir members\./);m.description='<script>alert("x")</script> & \'quote\'\nsecond line';html=await(await f.request(`/s/${a}`)).text();assert.ok(html.includes('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &amp; &#39;quote&#39;\nsecond line'));assert.doesNotMatch(html,/<script>/);for(const invalid of [null,{},'x'.repeat(2001)]){m.description=invalid;assert.equal((await f.request(`/s/${a}`)).status,404);}delete m.description;assert.equal((await f.request(`/s/${a}`)).status,200);});
+
+test('Uploaded dates sort newest first, both columns toggle, ties stable and missing dates last',async()=>{
+ const {sortFiles}=await import('../src/worker.js');
+ const files=[{filename:'Zulu.pdf',uploadedAt:'2026-10-15T10:00:00Z'},{filename:'Alpha.pdf',uploadedAt:'2026-10-16T10:00:00Z'},{filename:'Beta.pdf',uploadedAt:'2026-10-16T10:00:00Z'},{filename:'Legacy.pdf'}];
+ assert.deepEqual(sortFiles(files).map(f=>f.filename),['Alpha.pdf','Beta.pdf','Zulu.pdf','Legacy.pdf']);assert.deepEqual(sortFiles(files,'date-asc').map(f=>f.filename),['Zulu.pdf','Alpha.pdf','Beta.pdf','Legacy.pdf']);assert.deepEqual(sortFiles(files,'name-desc').map(f=>f.filename),['Zulu.pdf','Legacy.pdf','Beta.pdf','Alpha.pdf']);assert.deepEqual(sortFiles([{filename:'a.pdf'},{filename:'A.pdf'}],'name-desc').map(f=>f.filename),['a.pdf','A.pdf']);
+ const f=await fixture();const m=f.manifests.get(`_shares/${await tokenHash(a)}.json`);m.files=files.map((x,i)=>({...x,id:'file'+i,key:keyA}));
+ let html=await(await f.request(`/s/${a}`)).text();assert.ok(html.indexOf('Alpha.pdf')<html.indexOf('Zulu.pdf'));assert.match(html,/aria-sort="descending"/);assert.match(html,/datetime="2026-10-16T10:00:00Z"/);assert.match(html,/Not recorded/);assert.match(html,/Sort by uploaded, ascending/);
+ html=await(await f.request(`/s/${a}/sort/name-asc`)).text();assert.ok(html.indexOf('Alpha.pdf')<html.indexOf('Beta.pdf'));assert.match(html,/Sort by filename, descending/);
+ assert.equal((await f.request(`/s/${a}/sort/invalid`)).status,404);assert.equal((await f.request(`/s/${a}/sort/name-asc?key=x`)).status,404);
+ m.files[0].filename='<img onerror="bad">.pdf';html=await(await f.request(`/s/${a}`)).text();assert.match(html,/&lt;img onerror=&quot;bad&quot;&gt;/);assert.doesNotMatch(html,/<img/);
+ m.files[0].uploadedAt='2026-10-15\" onerror=bad';assert.equal((await f.request(`/s/${a}`)).status,404);
+});
