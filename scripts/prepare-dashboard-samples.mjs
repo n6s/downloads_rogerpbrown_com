@@ -2,6 +2,10 @@ import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
 import path from 'node:path';
 const root=path.resolve('.local/dashboard-upload');
+for (const name of ['anne-sample','tenor-sample']) {
+ try { await fs.access(`.local/${name}.json`); throw new Error('Sample record exists; preserve its token and manifest.'); }
+ catch (error) { if (error.code !== 'ENOENT') throw error; }
+}
 await fs.mkdir(root,{recursive:true,mode:0o700});
 for(const [name,title,description,source,days] of [
  ['anne-sample','Recording’s recording download — sample','Harmless test file. No rehearsal audio is included.','samples/Recording - sample download.txt',14],

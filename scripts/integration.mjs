@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { tokenHash } from '../src/worker.js';
 const require=createRequire(import.meta.url);
@@ -10,6 +10,7 @@ const token='L'.repeat(43), other='M'.repeat(43);
 const key=`objects/${'c'.repeat(32)}/${'d'.repeat(32)}`;
 const key2=`objects/${'e'.repeat(32)}/${'f'.repeat(32)}`;
 try {
+ await mkdir('.local',{recursive:true,mode:0o700});
  const bucket=await mf.getR2Bucket('DOWNLOADS');
  const pdf=await readFile('samples/Tenors - sample manuscript.pdf');
  await bucket.put(key,pdf);await bucket.put(key2,'Recording sample only');
