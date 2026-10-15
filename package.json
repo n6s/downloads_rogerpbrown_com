@@ -2,6 +2,6 @@
   "name": "private-downloads",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node test/worker.test.js", "check": "node --check src/worker.js && node --check scripts/manage.mjs", "integration": "node scripts/integration.mjs" },
+  "scripts": { "test": "node test/worker.test.js && node test/dashboard.test.js", "check": "node --check src/worker.js && node --check scripts/manage.mjs && node --check scripts/dashboard.mjs", "integration": "node scripts/integration.mjs" },
   "devDependencies": { "wrangler": "4.135.0", "miniflare": "5.20260918.0-alpha" }
 }

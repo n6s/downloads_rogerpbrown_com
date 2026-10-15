@@ -26,7 +26,7 @@ if (command === 'create') {
   const [days, title, description, ...files] = args;
   if (!Number.isInteger(Number(days)) || +days < 1 || +days > 180 || !title || title.length > 200 || typeof description !== 'string' || description.length > 2000 || !files.length || files.length > 100) throw Error('create NAME DAYS TITLE DESCRIPTION FILE... (1-180 days, title max 200 characters, description max 2000 characters or empty string, 1-100 files)');
   try { await stat(path); throw Error('Share name already exists; choose a new name.'); } catch(e) { if (e.code !== 'ENOENT') throw e; }
-  const sizes = await Promise.all(files.map(async f => {const s=await stat(f); if(!s.isFile() || s.size > 300*1024**2) throw Error('CLI upload limit: 300 MiB per file. Use the Cloudflare dashboard for larger files.'); return s.size;}));
+  const sizes = await Promise.all(files.map(async f => {const s=await stat(f); if(!s.isFile() || s.size > 300*1024**2) throw Error('CLI upload limit: 300 MiB per file. Larger files require an authorized multipart upload path; the dashboard also limits uploads to 300 MB.'); return s.size;}));
   if(sizes.reduce((a,b)=>a+b,0) > 1024**3) throw Error('Conservative batch limit: 1 GiB. Check total account storage before larger transfers.');
   const accountBytes=Number(process.env.DOWNLOADS_CONFIRMED_ACCOUNT_BYTES);
   if(!Number.isSafeInteger(accountBytes) || accountBytes < 0 || !process.env.DOWNLOADS_CONFIRMED_ACCOUNT_BYTES) throw Error('Check current R2 storage across all account buckets; set DOWNLOADS_CONFIRMED_ACCOUNT_BYTES to that current total in bytes before this batch.');

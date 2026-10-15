@@ -1,0 +1,23 @@
+import {mkdtemp,mkdir,copyFile,writeFile,readFile,readdir,stat} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join,dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
+const repo=dirname(dirname(fileURLToPath(import.meta.url)));
+import {spawnSync} from 'node:child_process';
+import assert from 'node:assert/strict';
+const root=await mkdtemp(join(tmpdir(),'download-operator-'));const folder=join(root,'pdfs');await mkdir(folder);
+const script=join(repo,'scripts/dashboard.mjs');
+await copyFile(join(repo,'samples/Tenors - sample manuscript.pdf'),join(folder,'one.pdf'));
+await writeFile(join(folder,'ignore.flac'),'not uploaded');
+await writeFile(join(root,'config.json'),JSON.stringify({folder,title:'Test',description:'',expiresAt:new Date(Date.now()+864e5).toISOString()}));
+const run=(...args)=>spawnSync(process.execPath,[script,...args],{cwd:root,env:{...process.env,DOWNLOADS_CONFIRMED_ACCOUNT_BYTES:'90000000'},encoding:'utf8'});
+assert.equal(run('new','test','config.json').status,0);
+const path=join(root,'.local/test.json');let before=JSON.parse(await readFile(path));assert.equal(before.manifest.files.length,1);assert.equal((await stat(path)).mode&0o777,0o600);
+assert.notEqual(run('new','test','config.json').status,0);assert.notEqual(run('sync','test').status,0);
+// Simulate completion of the separate dashboard publication and verification step.
+before.pending=false;await writeFile(path,JSON.stringify(before));
+assert.equal(run('sync','test').status,0);let after=JSON.parse(await readFile(path));assert.equal(after.manifest.files[0].key,before.manifest.files[0].key);assert.equal((await readdir(join(after.lastUpload.operation,'data'))).length,0);
+after.pending=false;await writeFile(path,JSON.stringify(after));await writeFile(join(folder,'one.pdf'),'%PDF-1.4\nreplacement');await writeFile(join(folder,'two.PDF'),'%PDF-1.4\nnew');
+assert.equal(run('sync','test').status,0);after=JSON.parse(await readFile(path));assert.equal(after.manifest.files.length,2);assert.notEqual(after.manifest.files[0].key,before.manifest.files[0].key);assert.equal(after.retired[0].key,before.manifest.files[0].key);
+assert.equal(run('revoke','test').status,0);after=JSON.parse(await readFile(path));assert.equal(after.manifest.revoked,true);assert.notEqual(run('cleanup-plan','test').status,0);after.pending=false;await writeFile(path,JSON.stringify(after));assert.equal(JSON.parse(run('cleanup-plan','test').stdout).files.length,3);
+console.log('PASS: only PDFs staged; private record permissions; duplicate-name and unfinished-upload protection; unchanged-key reuse; immutable replacement and retirement; revocation and exact cleanup plan. Temporary fixture directory: '+root);
