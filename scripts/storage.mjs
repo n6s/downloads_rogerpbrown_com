@@ -7,9 +7,9 @@ const sha=b=>createHash('sha256').update(b).digest('hex');
 export function storageClient(env=process.env,request=fetch){
  if(!!env.DOWNLOADS_R2_ACCESS_KEY_ID!==!!env.DOWNLOADS_R2_SECRET_ACCESS_KEY)throw Error('Incomplete dedicated R2 credentials; no fallback attempted.');
  const s3=!!(env.DOWNLOADS_R2_ACCESS_KEY_ID && env.DOWNLOADS_R2_SECRET_ACCESS_KEY);
+ if(!s3 && !env.CLOUDFLARE_API_TOKEN)throw Error('No existing upload credential. See README: bucket-scoped R2 Object Read & Write setup requires approval.');
  const account=env.DOWNLOADS_ACCOUNT_ID||ACCOUNT;
  if(!account || !/^[a-f0-9]{32}$/.test(account))throw Error('Configure DOWNLOADS_ACCOUNT_ID or private .local/operator.json before uploading.');
- if(!s3 && !env.CLOUDFLARE_API_TOKEN)throw Error('No existing upload credential. See README: bucket-scoped R2 Object Read & Write setup requires approval.');
  const host=s3?`${account}.r2.cloudflarestorage.com`:'api.cloudflare.com';
  async function call(method,key,body,payloadHash,size){
   const path=s3?`/${BUCKET}/${key.split('/').map(encodeURIComponent).join('/')}`:`/client/v4/accounts/${account}/r2/buckets/${BUCKET}/objects/${key.split('/').map(encodeURIComponent).join('/')}`;
