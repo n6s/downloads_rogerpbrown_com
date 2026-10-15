@@ -1,0 +1,32 @@
+import { createRequire } from 'node:module';
+import { readFile, writeFile } from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import { tokenHash } from '../src/worker.js';
+const require=createRequire(import.meta.url);
+const { Miniflare, convertV4MiniflareOptions }=require(process.env.MINIFLARE_MODULE || 'miniflare');
+const options={modules:true,scriptPath:'src/worker.js',compatibilityDate:'2026-09-25',r2Buckets:['DOWNLOADS'],port:0};
+const mf=new Miniflare(convertV4MiniflareOptions ? convertV4MiniflareOptions(options) : options);
+const token='L'.repeat(43), other='M'.repeat(43);
+const key=`objects/${'c'.repeat(32)}/${'d'.repeat(32)}`;
+const key2=`objects/${'e'.repeat(32)}/${'f'.repeat(32)}`;
+try {
+ const bucket=await mf.getR2Bucket('DOWNLOADS');
+ const pdf=await readFile('samples/Tenors - sample manuscript.pdf');
+ await bucket.put(key,pdf);await bucket.put(key2,'Recording sample only');
+ const manifest={version:1,title:'Example tenor practice parts',description:'Example practice copies for the intended choir members.',expiresAt:'2099-01-01T00:00:00Z',files:[{id:'sample-pdf',key,filename:'Tenors - sample manuscript.pdf'}]};
+ const mk=`_shares/${await tokenHash(token)}.json`;
+ await bucket.put(mk,JSON.stringify(manifest));
+ await bucket.put(`_shares/${await tokenHash(other)}.json`,JSON.stringify({...manifest,title:'Recording sample',files:[{id:'anne',key:key2,filename:'Recording.txt'}]}));
+ const url=`https://downloads.example.com/s/${token}`;
+ let r=await mf.dispatchFetch(url);assert.equal(r.status,200);let html=await r.text();assert.match(html,/Example tenor practice parts/);assert.match(html,/Example practice copies for the intended choir members\./);assert.match(html,/Download/);assert.doesNotMatch(html,/Recording|objects\//);await writeFile('.local/sample-page.html',html);
+ r=await mf.dispatchFetch(`${url}/f/sample-pdf`);assert.equal(r.status,200);assert.deepEqual(Buffer.from(await r.arrayBuffer()),pdf);assert.match(r.headers.get('content-disposition'),/^attachment/);
+ const etag=r.headers.get('etag');
+ r=await mf.dispatchFetch(`${url}/f/sample-pdf`,{method:'HEAD'});assert.equal(r.status,200);assert.equal(r.headers.get('content-length'),String(pdf.length));assert.equal((await r.arrayBuffer()).byteLength,0);
+ r=await mf.dispatchFetch(`${url}/f/sample-pdf`,{headers:{Range:'bytes=0-9','If-Range':etag}});assert.equal(r.status,206);assert.equal(r.headers.get('content-range'),`bytes 0-9/${pdf.length}`);assert.deepEqual(Buffer.from(await r.arrayBuffer()),pdf.subarray(0,10));
+ r=await mf.dispatchFetch(`${url}/f/sample-pdf`,{headers:{Range:'bytes=-10'}});assert.equal(r.status,206);assert.deepEqual(Buffer.from(await r.arrayBuffer()),pdf.subarray(-10));
+ r=await mf.dispatchFetch(`${url}/f/sample-pdf`,{headers:{Range:'bytes=99999-'}});assert.equal(r.status,416);
+ for(const u of ['https://downloads.example.com/',`${url}/f/anne`,`https://downloads.example.com/s/${other}/f/sample-pdf`])assert.equal((await mf.dispatchFetch(u)).status,404);
+ manifest.revoked=true;await bucket.put(mk,JSON.stringify(manifest));assert.equal((await mf.dispatchFetch(`${url}/f/sample-pdf`)).status,404);
+ manifest.revoked=false;manifest.expiresAt='2000-01-01';await bucket.put(mk,JSON.stringify(manifest));assert.equal((await mf.dispatchFetch(url)).status,404);
+ console.log('PASS: real local Worker/R2 integration: list, byte-identical PDF, HEAD, ranges, scope isolation, expiry, revocation, no public listing.');
+} finally {await mf.dispose();}

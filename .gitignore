@@ -1,0 +1,11 @@
+.local/
+.wrangler/
+.dev.vars
+node_modules/
+
+.env
+.env.*
+*.log
+*.flac
+*.wav
+*.mp3
